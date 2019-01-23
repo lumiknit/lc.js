@@ -119,7 +119,9 @@ let preprocess = (src) => {
 }
 lc.preprocess = preprocess;
 
-/* Parser */
+/* --- Parser --- */
+/* Token
+   :NUM, :STR, :ID, :BUILTIN, :OP, :LAM, :APP */
 function Token(src, p, type, data) {
   this.src = src;
   this.p = p;
@@ -427,17 +429,168 @@ let parseLine = (S) => {
 
 let parse = (name, src) => {
   let S = new ParseState(name, src);
-  try {
-    let result = parseLine(S);
-    S.passSpaces();
-    if(S.p < S.src.length) {
-      throw new CompileError(S.src, S.p, S.unexpectedMsg(S.p));
-    }
-    console.log(result.toString());
-  } catch(e) { /* Compile Error */
-    console.log("Compile Error");
-    console.log(e.toString());
-    throw e;
+  let result = parseLine(S);
+  S.passSpaces();
+  if(S.p < S.src.length) {
+    throw new CompileError(S.src, S.p, S.unexpectedMsg(S.p));
   }
+  return result;
 }
 lc.parse = parse;
+
+/* --- Name Checker --- */
+let getDefaultNames = () => { return {
+  '@print': 1,
+  '@add': 2,
+  '@sub': 2,
+  '@mul': 2,
+  '@div': 2,
+  '@mod': 2,
+  '@length': 1,
+  '@true': 0,
+  '@false': 0,
+  '@if': 3,
+  '@not': 1,
+  '@and': 2,
+  '@or': 2,
+  '@eq': 2,
+  '@lt': 2,
+  '@le': 2,
+}; };
+
+let findName = (names, name) => names[name] > 0;
+
+let namecheckOne = (names, tk) => {
+  var name;
+  var i;
+  var j;
+  switch(tk.type) {
+  case 'id':
+  case 'op':
+    if(!findName(names, tk.data)) {
+      throw new CompileError(tk.src, tk.p,
+                             "name " + tk.data + " is not bound");
+    }
+    return -1;
+  case 'builtin':
+    i = names['@' + tk.data];
+    if(i == undefined) {
+      throw new CompileError(tk.src, tk.p,
+                             "name @" + tk.data + " is not bound");
+    }
+    return i;
+  case 'lam':
+    name = tk.data[0].data;
+    if(!names[name]) names[name] = 1;
+    else names[name]++;
+    i = namecheckOne(names, tk.data[1]);
+    if(i > 0) {
+      throw new CompileError(tk.src, tk.p,
+                             "wrong number of arguments for builtin");
+    }
+    names[name]--;
+    break;
+  case 'app':
+    i = namecheckOne(names, tk.data[0]);
+    j = namecheckOne(names, tk.data[1]);
+    if(j > 0) {
+      throw new CompileError(tk.src, tk.p,
+                             "wrong number of arguments for builtin");
+    }
+    return i - 1;
+  default: return -1;
+  }
+}
+
+let namecheck = (tk) => {
+  let x = namecheckOne(getDefaultNames(), tk);
+  if(x > 0) {
+    throw new CompileError(tk.src, tk.p,
+                             "wrong number of arguments for builtin");
+  }
+  return true;
+}
+lc.namecheck = namecheck;
+
+/* --- Simple Compiler --- */
+let encodeNameForJSTable = {
+  '_': '__',
+  '~': '_t',
+  '!': '_x',
+  '$': '_d',
+  '%': '_p',
+  '^': '_h',
+  '&': '_n',
+  '*': '_a',
+  '+': '_P',
+  '-': '_m',
+  '|': '_o',
+  ':': '_c',
+  '<': '_l',
+  '>': '_g',
+  ',': '_C',
+  '/': '_s',
+  '=': '_e'
+}
+let encodeNameForJS = (s) => {
+  let res = "";
+  for(let i = 0; i < s.length; i++) {
+    let t = encodeNameForJSTable[s[i]];
+    if(t) res += t;
+    else res += s[i];
+  }
+  return res;
+}
+
+let compile = (tk) => {
+  switch(tk.type) {
+  case 'num': return String(tk.data);
+  case 'str': return '\'' + escape(tk.data) + '\'';
+  case 'id':
+  case 'op':
+    return encodeNameForJS(tk.data);
+  case 'builtin':
+    switch(tk.data) {
+    case 'print': return 'console.log';
+    case 'add': return '(x => y => x + y)';
+    case 'sub': return '(x => y => x - y)';
+    case 'mul': return '(x => y => x * y)';
+    case 'div': return '(x => y => Math.floor(x / y))';
+    case 'mod': return '(x => y => x % y)';
+    case 'length': return '(x => x.length)';
+    case 'true': return '(x => y => x)';
+    case 'false': return '(x => y => y)';
+    case 'not': return '(x => x(x=>y=>y)(x=>y=>x))';
+    case 'and': return '(x => y => x(y)(x=>y=>y))';
+    case 'or': return '(x => y => x(x=>y=>x)(y))';
+    case 'if': return '(f => x => y => f(x)(y))';
+    case 'eq': return '(x => y => x == y ? x=>y=>x : x=>y=>y)';
+    case 'lt': return '(x => y => x < y ? x=>y=>x : x=>y=>y)';
+    case 'le': return '(x => y => x <= y ? x=>y=>x : x=>y=>y)';
+    }
+  case 'lam':
+    return "(" + compile(tk.data[0]) + ")=>(" +
+      compile(tk.data[1]) + ")";
+  case 'app':
+    return compile(tk.data[0]) + "(" + compile(tk.data[1]) + ")";
+  }
+}
+
+/* --- Runner --- */
+let run = (name, src) => {
+  try {
+    let tk = parse(name, src);
+    namecheck(tk);
+    let res = compile(tk);
+    let ret = eval(res);
+    console.log("=> " + ret);
+  } catch(e) {
+    if(e.constructor == CompileError) {
+      console.log("Compile Error");
+      console.log(e.toString());
+    } else {
+      throw e;
+    }
+  }
+}
+lc.run = run;

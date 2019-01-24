@@ -87,7 +87,7 @@ let lc = function() {
     case '^': return 3;
     case ':': case ',': return 2.5;
     case '~': return 2;
-    case '$': return 1;
+    case '$': return 0.5;
     default: return 10;
     }
   };
@@ -345,11 +345,11 @@ let lc = function() {
     let b = S.p;
     if(!S.is('\\')) return S.restore();
     else S.pass();
+    let p = S.p;
     S.passSpaces();
     let id = tryParseOpId(S) || tryParseId(S);
     if(id == null) {
-      throw new CompileError(S.src, S.p - S.predefOff,
-                            S.unexpectedMsg(S.p) + ", expect :OP_ID or :ID");
+      id = new Token(S.src, p, 'id', '_');
     }
     S.passSpaces();
     if(S.is('.')) {
@@ -480,6 +480,7 @@ let lc = function() {
     '@nil': 0,
     '@append': 2,
     '@head': 1,
+    '@tail': 1,
     '@isEmpty': 1
   }; };
 
@@ -549,8 +550,16 @@ let lc = function() {
     '/': '_s',
     '=': '_e'
   };
+  let jsKeywords = {
+    'if': true, 'else': true,
+    'return': true, 'for': true, 'while': true, 'do': true,
+    'let': true, 'var': true, 'const': true, 'function': true,
+  };
   let encodeNameForJS = (s) => {
     let res = "";
+    if(jsKeywords[s]) {
+      return "_j" + s;
+    }
     for(let i = 0; i < s.length; i++) {
       let t = encodeNameForJSTable[s[i]];
       if(t) res += t;
@@ -602,7 +611,11 @@ let lc = function() {
       let _Qsecond = (p => p(_Qfalse));
       let _Qnil = (f=>x=>x);
       let _Qappend = (a=>l=>f=>x=>f(a)(l(f)(x)));
-      let _Qhead = (l=>l(_Qtrue));
+      let _Qhead = (l=>l(_Qtrue)(0));
+      let _Qtail = (l=>
+        _Qfirst(l(a=>b=>
+          _Qpair(_Qsecond(b))(_Qappend(a)(_Qsecond(b))))(_Qpair(_Qnil)(_Qnil)))
+      );
       let _QisEmpty = (l=>l(a=>b=>_Qfalse)(_Qtrue));
     `;
     let body = 'return (' + compileToken(tk) + ');';
@@ -623,7 +636,7 @@ let lc = function() {
         _0.out += "Compile Error\n";
         _0.out += e.toString();
       } else {
-        throw e;
+        _0.out += e;
       }
     }
     return _0.out;
@@ -634,7 +647,7 @@ let lc = function() {
     {name: '(=:)', body: '\\f.\\x.f x'},
     {name: '(|>)', body: '\\f.\\x.f x'},
     {name: '($)', body: '\\x.\\f.f x'},
-    {name: '(+)', body: '@add'},
+    {name: '(+)', body: '\\r.\\l. @add l r'},
     {name: '(-)', body: '\\r.\\l. @sub l r'},
     {name: '(*)', body: '\\r.\\l. @mul l r'},
     {name: '(/)', body: '\\r.\\l. @div l r'},
@@ -643,6 +656,7 @@ let lc = function() {
     {name: '(!)', body: '@not'},
     {name: '(&)', body: '\\r.\\l. @and l r'},
     {name: '(|)', body: '\\r.\\l. @or l r'},
+    {name: 'if', body: '@if'},
     {name: '(==)', body: '@eq'},
     {name: '(!=)', body: '\\y.\\x.@not(@eq x y)'},
     {name: '(<=)', body: '\\r.\\l. @le l r'},
@@ -656,6 +670,7 @@ let lc = function() {
     {name: 'nil', body: '@nil'},
     {name: '(:)', body: '\\r.\\l. @append l r'},
     {name: 'head', body: '@head'},
+    {name: 'tail', body: '@tail'},
     {name: 'isEmpty', body: '@isEmpty'},
     {name: 'I', body: '\\x.x'},
     {name: 'K', body: '\\x.\\y.x'},

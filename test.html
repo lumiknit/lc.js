@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title> lc.js test </title>
+    <script src="lc.js"></script>
+    <script lang="javascript">
+      function buttonClicked() {
+        var src = document.getElementById("text-source").value;
+        var output = lc.run("<TEXT>", src, lc.stdPredefined);
+        document.getElementById("text-result").value = output;
+      }
+    </script>
+    <style>
+      .fixed {
+        font-family: 'Consolas', 'Monaco', 'Courier New', Courier, monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <div>
+      Source: <br>
+      <textarea rows="10" cols="80" class="fixed" id="text-source"></textarea>
+    </div>
+    <button id="button-run" onclick="buttonClicked();">Run</button>
+    <div>
+      Result:<br>
+      <textarea rows="6" cols="80" class="fixed" id="text-result"></textarea>
+    </div>
+  </body>
+</html>

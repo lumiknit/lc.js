@@ -554,6 +554,7 @@ let lc = function() {
     'if': true, 'else': true,
     'return': true, 'for': true, 'while': true, 'do': true,
     'let': true, 'var': true, 'const': true, 'function': true,
+    'true': true, 'false': true,
   };
   let encodeNameForJS = (s) => {
     let res = "";
@@ -570,8 +571,8 @@ let lc = function() {
 
   let compileToken = (tk) => {
     switch(tk.type) {
-    case 'num': return String(tk.data);
-    case 'str': return '\'' + escape(tk.data) + '\'';
+    case 'num': return 'new _qLB(() => Number(' + String(tk.data) + '))';
+    case 'str': return 'new _qLB(() => \'' + escape(tk.data) + '\')';
     case 'id':
     case 'op':
       return encodeNameForJS(tk.data);
@@ -581,44 +582,79 @@ let lc = function() {
       }
       break;
     case 'lam':
-      return "((" + compileToken(tk.data[0]) + ")=>(" +
-        compileToken(tk.data[1]) + "))";
+      return "new _qLB(() => ((" + compileToken(tk.data[0]) + ")=>(" +
+        compileToken(tk.data[1]) + ")))";
     case 'app':
-      return compileToken(tk.data[0]) + "(" + compileToken(tk.data[1]) + ")";
+      return "new _qLB(() => (" + compileToken(tk.data[0]) +
+        ").call(" + compileToken(tk.data[1]) + "))";
     }
   };
 
   let compile = (tk) => {
     let pre = `
-      let _Qprint = (x => { _0.out += x + "\\n"; return String(x); });
-      let _Qadd = (x => y => x + y);
-      let _Qsub = (x => y => x - y);
-      let _Qmul = (x => y => x * y);
-      let _Qdiv = (x => y => Math.floor(x / y));
-      let _Qmod = (x => y => x % y);
-      let _Qlength = (x => x.length);
-      let _Qtrue = (x => y => x);
-      let _Qfalse = (x => y => y);
-      let _Qnot = (x => x(_Qfalse)(_Qtrue));
-      let _Qand = (x => y => x(y)(_Qfalse));
-      let _Qor = (x => y => x(_Qtrue)(y));
-      let _Qif = (f => x => y => f(x)(y));
-      let _Qeq = (x => y => x === y ? _Qtrue : _Qfalse);
-      let _Qlt = (x => y => x < y ? _Qtrue : _Qfalse);
-      let _Qle = (x => y => x <= y ? _Qtrue : _Qfalse);
-      let _Qpair = (x => y => f => f(x)(y));
-      let _Qfirst = (p => p(_Qtrue));
-      let _Qsecond = (p => p(_Qfalse));
-      let _Qnil = (f=>x=>x);
-      let _Qappend = (a=>l=>f=>x=>f(a)(l(f)(x)));
-      let _Qhead = (l=>l(_Qtrue)(0));
-      let _Qtail = (l=>
-        _Qfirst(l(a=>b=>
-          _Qpair(_Qsecond(b))(_Qappend(a)(_Qsecond(b))))(_Qpair(_Qnil)(_Qnil)))
-      );
-      let _QisEmpty = (l=>l(a=>b=>_Qfalse)(_Qtrue));
+      function _qLB(f) {
+        this._ = undefined;
+        this.f = f;
+      };
+      _qLB.prototype.value = function() {
+        if(this._ == undefined) {
+          this._ = this.f();
+          if(this._.constructor === _qLB) this._ = this._.value();
+        }
+        return this._;
+      };
+      _qLB.prototype.call = function(x) {
+        if(this._ == undefined) {
+          this._ = this.f();
+          if(this._.constructor === _qLB) this._ = this._.value();
+        }
+        return this._(x);
+      };
+
+      let _Qprint = new _qLB(() => x => {
+        _0.out += x.value() + "\\n";
+        return new _qLB(() => String(x.value()));
+      });
+      let _Qadd = new _qLB(() => x =>
+        new _qLB(() => y => new _qLB(() => x.value() + y.value())));
+      let _Qsub = new _qLB(() => x =>
+        new _qLB(() => y => new _qLB(() => x.value() - y.value())));
+      let _Qmul = new _qLB(() => x =>
+        new _qLB(() => y => new _qLB(() => x.value() * y.value())));
+      let _Qdiv = new _qLB(() => x =>
+        new _qLB(() => y => new _qLB(() => Math.floor(x.value() / y.value()))));
+      let _Qmod = new _qLB(() => x =>
+        new _qLB(() => y => new _qLB(() => x.value() % y.value())));
+      let _Qlength = new _qLB(() => x => new _qLB(() => Number(x.value().length)));
+      let _Qtrue = new _qLB(() => x => new _qLB(() => y => x));
+      let _Qfalse = new _qLB(() => x => new _qLB(() => y => y));
+      let _Qnot = new _qLB(() => x => x.call(_Qfalse).call(_Qtrue));
+      let _Qif = new _qLB(() => f =>
+        new _qLB(() => x => new _qLB(() => y => f.call(x).call(y))));
+      let _Qeq = new _qLB(() => x =>
+        new _qLB(() => y => new _qLB(() =>
+        x.value() === y.value() ? _Qtrue : _Qfalse)));
+      let _Qlt = new _qLB(() => x =>
+        new _qLB(() => y => new _qLB(() =>
+        x.value() < y.value() ? _Qtrue : _Qfalse)));
+      let _Qle = new _qLB(() => x =>
+        new _qLB(() => y => new _qLB(() =>
+        x.value() <= y.value() ? _Qtrue : _Qfalse)));
+      let _Qpair = new _qLB(() => x =>
+        new _qLB(() => y => new _qLB(() => f =>
+        f.call(x).call(y))));
+      let _Qfirst = new _qLB(() => p => p.call(_Qtrue));
+      let _Qsecond = new _qLB(() => p => p.call(_Qfalse));
+      let _Qnil = _Qfalse;
+      let _Qappend = new _qLB(() => a => new _qLB(() => l =>
+        new _qLB(() => f => new _qLB(() => x => f.call(a).call(l.call(f).call(x))))));
+      let _Qhead = new _qLB(() => l => l.call(_Qtrue).call(_Qfalse));
+      let _Qtail = new _qLB(() => l =>
+        _Qfirst.call(l.call(new _qLB(() => a => new _qLB(() => b =>
+          _Qpair.call(_Qsecond.call(b)).call(_Qappend.call(a).call(_Qsecond.call(b)))))).call(_Qpair.call(_Qnil).call(_Qnil))));
+      let _QisEmpty = new _qLB(() => l => l.call(new _qLB(() => a => new _qLB(() => b => _Qfalse))).call(_Qtrue));
     `;
-    let body = 'return (' + compileToken(tk) + ');';
+    let body = 'return (' + compileToken(tk) + ').value();';
     return pre + body;
   };
 
@@ -629,6 +665,7 @@ let lc = function() {
       let tk = parse(name, src, predefined);
       namecheck(tk);
       let res = compile(tk);
+      console.log(res);
       let ret = Function('_0', res)(_0);
       _0.out += "=> " + ret;
     } catch(e) {
@@ -657,6 +694,8 @@ let lc = function() {
     {name: '(&)', body: '\\r.\\l. @and l r'},
     {name: '(|)', body: '\\r.\\l. @or l r'},
     {name: 'if', body: '@if'},
+    {name: 'true', body: '@true'},
+    {name: 'false', body: '@false'},
     {name: '(==)', body: '@eq'},
     {name: '(!=)', body: '\\y.\\x.@not(@eq x y)'},
     {name: '(<=)', body: '\\r.\\l. @le l r'},

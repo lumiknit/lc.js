@@ -344,7 +344,7 @@ let lc = function() {
   let tryParseLambda = (S) => {
     S.push();
     let b = S.p;
-    if(!S.is('\\')) return S.restore();
+    if(!S.is('\\') && !S.is('λ')) return S.restore();
     else S.pass();
     let p = S.p;
     S.passSpaces();

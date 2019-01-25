@@ -459,29 +459,17 @@ let lc = function() {
   /* --- Name Checker --- */
   let getDefaultNames = () => { return {
     '@print': 1,
+    '@true': 0,
+    '@false': 0,
     '@add': 2,
     '@sub': 2,
     '@mul': 2,
     '@div': 2,
     '@mod': 2,
     '@length': 1,
-    '@true': 0,
-    '@false': 0,
-    '@if': 3,
-    '@not': 1,
-    '@and': 2,
-    '@or': 2,
     '@eq': 2,
     '@lt': 2,
-    '@le': 2,
-    '@pair': 2,
-    '@first': 1,
-    '@second': 1,
-    '@nil': 0,
-    '@append': 2,
-    '@head': 1,
-    '@tail': 1,
-    '@isEmpty': 1
+    '@le': 2
   }; };
 
   let findName = (names, name) => names[name] > 0;
@@ -522,10 +510,6 @@ let lc = function() {
 
   let namecheck = (tk) => {
     let x = namecheckOne(getDefaultNames(), tk);
-    if(x > 0) {
-      throw new CompileError(tk.src, tk.p,
-                              "wrong number of arguments for builtin");
-    }
     return true;
   };
   lc.namecheck = namecheck;
@@ -571,102 +555,165 @@ let lc = function() {
 
   let compileToken = (tk) => {
     switch(tk.type) {
-    case 'num': return 'new _qLB(() => Number(' + String(tk.data) + '))';
-    case 'str': return 'new _qLB(() => \'' + escape(tk.data) + '\')';
+    case 'num': return 'Number(' + String(tk.data) + ')';
+    case 'str': return '\'' + escape(tk.data) + '\'';
     case 'id':
     case 'op':
       return encodeNameForJS(tk.data);
-    case 'builtin':
-      switch(tk.data) {
-      default: return '_Q' + tk.data;
-      }
-      break;
+    case 'builtin': return '_Q' + tk.data;
     case 'lam':
-      return "new _qLB(() => ((" + compileToken(tk.data[0]) + ")=>(" +
-        compileToken(tk.data[1]) + ")))";
+      return "((" + compileToken(tk.data[0]) + ")=>(" +
+        compileToken(tk.data[1]) + "))";
     case 'app':
-      return "new _qLB(() => (" + compileToken(tk.data[0]) +
-        ").call(" + compileToken(tk.data[1]) + "))";
+      return "_qapp(new _qLB(() => (" + compileToken(tk.data[0]) +
+        ")), new _qLB(() => (" +
+        compileToken(tk.data[1]) + ")))";
     }
+  };
+
+  let LazyBox = function(f) {
+    this._ = undefined;
+    this.f = f;
+  };
+  LazyBox.prototype.value = function(_0) {
+    if(this._ == undefined) {
+      let x = _0.stack.length;
+      let temp = this.f();
+      if(_0.stack.length > x) {
+        _0.stack[x].box = this;
+      }
+      return temp;
+    } else {
+      this.value = this.constructor.prototype.retValue;
+      return this._;
+    }
+  };
+  LazyBox.prototype.retValue = function() {
+    return this._;
+  };
+  LazyBox.prototype.toString = function() {
+    if(this._ === undefined) {
+      return "<<" + String(this.f) + ">>";
+    } else return String(this._);
   };
 
   let compile = (tk) => {
     let pre = `
-      function _qLB(f) {
-        this._ = undefined;
-        this.f = f;
+      function _qapp(f, a) {
+        _0.stack.push({box: _0, val: a});
+        return f;
+      }
+      let _qLB = _0.LazyBox;
+      let _Qprint = x => {
+        _0.save();
+        let ret = String(_0.evaluate(_0, x));
+        _0.load();
+        _0.out += ret + "\\n";
+        return ret;
       };
-      _qLB.prototype.value = function() {
-        if(this._ == undefined) {
-          this._ = this.f();
-          if(this._.constructor === _qLB) this._ = this._.value();
-        }
-        return this._;
+      let _Qtrue = x => y => x;
+      let _Qfalse = x => y => y;
+      let _Qadd = x => y =>  {
+        _0.save();
+        let rx = _0.evaluate(_0, x);
+        let ry = _0.evaluate(_0, y);
+        _0.load();
+        return rx + ry;
       };
-      _qLB.prototype.call = function(x) {
-        if(this._ == undefined) {
-          this._ = this.f();
-          if(this._.constructor === _qLB) this._ = this._.value();
-        }
-        return this._(x);
+      let _Qsub = x => y =>  {
+        _0.save();
+        let rx = _0.evaluate(_0, x);
+        let ry = _0.evaluate(_0, y);
+        _0.load();
+        return rx - ry;
       };
-
-      let _Qprint = new _qLB(() => x => {
-        _0.out += x.value() + "\\n";
-        return new _qLB(() => String(x.value()));
-      });
-      let _Qadd = new _qLB(() => x =>
-        new _qLB(() => y => new _qLB(() => x.value() + y.value())));
-      let _Qsub = new _qLB(() => x =>
-        new _qLB(() => y => new _qLB(() => x.value() - y.value())));
-      let _Qmul = new _qLB(() => x =>
-        new _qLB(() => y => new _qLB(() => x.value() * y.value())));
-      let _Qdiv = new _qLB(() => x =>
-        new _qLB(() => y => new _qLB(() => Math.floor(x.value() / y.value()))));
-      let _Qmod = new _qLB(() => x =>
-        new _qLB(() => y => new _qLB(() => x.value() % y.value())));
-      let _Qlength = new _qLB(() => x => new _qLB(() => Number(x.value().length)));
-      let _Qtrue = new _qLB(() => x => new _qLB(() => y => x));
-      let _Qfalse = new _qLB(() => x => new _qLB(() => y => y));
-      let _Qnot = new _qLB(() => x => x.call(_Qfalse).call(_Qtrue));
-      let _Qif = new _qLB(() => f =>
-        new _qLB(() => x => new _qLB(() => y => f.call(x).call(y))));
-      let _Qeq = new _qLB(() => x =>
-        new _qLB(() => y => new _qLB(() =>
-        x.value() === y.value() ? _Qtrue : _Qfalse)));
-      let _Qlt = new _qLB(() => x =>
-        new _qLB(() => y => new _qLB(() =>
-        x.value() < y.value() ? _Qtrue : _Qfalse)));
-      let _Qle = new _qLB(() => x =>
-        new _qLB(() => y => new _qLB(() =>
-        x.value() <= y.value() ? _Qtrue : _Qfalse)));
-      let _Qpair = new _qLB(() => x =>
-        new _qLB(() => y => new _qLB(() => f =>
-        f.call(x).call(y))));
-      let _Qfirst = new _qLB(() => p => p.call(_Qtrue));
-      let _Qsecond = new _qLB(() => p => p.call(_Qfalse));
-      let _Qnil = _Qfalse;
-      let _Qappend = new _qLB(() => a => new _qLB(() => l =>
-        new _qLB(() => f => new _qLB(() => x => f.call(a).call(l.call(f).call(x))))));
-      let _Qhead = new _qLB(() => l => l.call(_Qtrue).call(_Qfalse));
-      let _Qtail = new _qLB(() => l =>
-        _Qfirst.call(l.call(new _qLB(() => a => new _qLB(() => b =>
-          _Qpair.call(_Qsecond.call(b)).call(_Qappend.call(a).call(_Qsecond.call(b)))))).call(_Qpair.call(_Qnil).call(_Qnil))));
-      let _QisEmpty = new _qLB(() => l => l.call(new _qLB(() => a => new _qLB(() => b => _Qfalse))).call(_Qtrue));
+      let _Qmul = x => y =>  {
+        _0.save();
+        let rx = _0.evaluate(_0, x);
+        let ry = _0.evaluate(_0, y);
+        _0.load();
+        return rx * ry;
+      };
+      let _Qdiv = x => y =>  {
+        _0.save();
+        let rx = _0.evaluate(_0, x);
+        let ry = _0.evaluate(_0, y);
+        _0.load();
+        return Math.floor(rx / ry);
+      };
+      let _Qmod = x => y =>  {
+        _0.save();
+        let rx = _0.evaluate(_0, x);
+        let ry = _0.evaluate(_0, y);
+        _0.load();
+        return rx % ry;
+      };
+      let _Qeq = x => y =>  {
+        _0.save();
+        let rx = _0.evaluate(_0, x);
+        let ry = _0.evaluate(_0, y);
+        _0.load();
+        return rx == ry ? _Qtrue : _Qfalse;
+      };
+      let _Qlt = x => y =>  {
+        _0.save();
+        let rx = _0.evaluate(_0, x);
+        let ry = _0.evaluate(_0, y);
+        _0.load();
+        return rx < ry ? _Qtrue : _Qfalse;
+      };
+      let _Qle = x => y =>  {
+        _0.save();
+        let rx = _0.evaluate(_0, x);
+        let ry = _0.evaluate(_0, y);
+        _0.load();
+        return rx <= ry ? _Qtrue : _Qfalse;
+      };
     `;
-    let body = 'return (' + compileToken(tk) + ').value();';
+    let body = 'return (' + compileToken(tk) + ');';
     return pre + body;
+  };
+
+  let evaluate = (_0, val) => {
+    while(true) {
+      while(val.constructor === LazyBox) {
+        val = val.value(_0);
+      }
+      if(_0.stack.length <= 0) break;
+      let p = _0.stack.pop();
+      val = val(p.val);
+      p._ = val;
+    }
+    return val;
+  };
+
+  let new_0 = () => {
+    return {
+      LazyBox: LazyBox,
+      evaluate: evaluate,
+      out: "",
+      stack: [],
+      stst: [],
+      save: function() {
+        this.stst.push(this.stack);
+        this.stack = [];
+      },
+      load: function() {
+        this.stack = this.stst.pop();
+      }
+    };
   };
 
   /* --- Runner --- */
   let run = (name, src, predefined) => {
-    var _0 = {out: ""};
+    var _0 = new_0();
     try {
       let tk = parse(name, src, predefined);
       namecheck(tk);
       let res = compile(tk);
       console.log(res);
-      let ret = Function('_0', res)(_0);
+      let fn = Function('_0', res)(_0);
+      let ret = evaluate(_0, fn);
       _0.out += "=> " + ret;
     } catch(e) {
       if(e.constructor == CompileError) {
@@ -690,27 +737,27 @@ let lc = function() {
     {name: '(/)', body: '\\r.\\l. @div l r'},
     {name: '(%)', body: '\\r.\\l. @mod l r'},
     {name: '(**)', body: '\\g.\\f.\\x.f (g x)'},
-    {name: '(!)', body: '@not'},
-    {name: '(&)', body: '\\r.\\l. @and l r'},
-    {name: '(|)', body: '\\r.\\l. @or l r'},
-    {name: 'if', body: '@if'},
     {name: 'true', body: '@true'},
     {name: 'false', body: '@false'},
+    {name: 'if', body: '\\b.\\t.\\f.b t f'},
+    {name: '(!)', body: '\\f.f true false'},
+    {name: '(&)', body: '\\r.\\l. l r false'},
+    {name: '(|)', body: '\\r.\\l. l true r'},
     {name: '(==)', body: '@eq'},
-    {name: '(!=)', body: '\\y.\\x.@not(@eq x y)'},
+    {name: '(!=)', body: '\\y.\\x.!(@eq x y)'},
     {name: '(<=)', body: '\\r.\\l. @le l r'},
     {name: '(<)', body: '\\r.\\l. @lt l r'},
     {name: '(>=)', body: '@le'},
     {name: '(>)', body: '@lt'},
     {name: 'print', body: '@print'},
-    {name: '(,)', body: '\\r.\\l. @pair l r'},
-    {name: 'first', body: '@first'},
-    {name: 'second', body: '@second'},
-    {name: 'nil', body: '@nil'},
-    {name: '(:)', body: '\\r.\\l. @append l r'},
-    {name: 'head', body: '@head'},
-    {name: 'tail', body: '@tail'},
-    {name: 'isEmpty', body: '@isEmpty'},
+    {name: '(,)', body: '\\r.\\l. \\f. f l r'},
+    {name: 'first', body: '\\p.p true'},
+    {name: 'second', body: '\\p.p false'},
+    {name: 'nil', body: 'false'},
+    {name: '(:)', body: '\\r.\\l. \\f.\\x.f l (r f x)'},
+    {name: 'head', body: '\\l.l true false'},
+    {name: 'tail', body: '\\l.first (l (\\a.\\b.(second b : a, second b)) (nil, nil))'},
+    {name: 'isEmpty', body: '\\l.l (\\a.\\b.false) true'},
     {name: 'I', body: '\\x.x'},
     {name: 'K', body: '\\x.\\y.x'},
     {name: 'S', body: '\\x.\\y.\\z.x z (y z)'},

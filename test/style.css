@@ -1,0 +1,138 @@
+@font-face {
+    font-family: DungGeunMo;
+    src: url(DungGeunMo.woff2) format('woff2');
+}
+
+html {
+    width: 100%;
+    height: 100%;
+}
+
+body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    font-family: 'DungGeunMo', sans-serif;
+    font-size: 12pt;
+    color: #fff;
+    background-color: #000084;
+}
+
+
+div#menu {
+    margin: 0;
+    color: #000084;
+    background-color: #bbb;
+}
+
+div#contents {
+    width: 100%;
+    height: calc(100% - 48px);
+}
+
+div#side {
+    float: left;
+    position: relative;
+    margin: 8px;
+    padding: 8px;
+
+    width: 200px;
+    height: calc(100% - 16px);
+    color: #fff;
+    background-color: #000084;
+    border-color: #fff;
+    border-style: solid;
+    border-width: 2px;
+}
+
+div#main {
+    overflow: hidden;
+    height: 100%;
+    padding: 8px;
+}
+
+div.content-title {
+    padding: 8px;
+}
+
+div#editor {
+    width: 100%;
+    height: 80%;
+}
+
+div#result {
+    width: 100%;
+    height: 20%;
+}
+
+
+/* Components */
+textarea {
+    padding: 8px;
+    border-color: #fff;
+    border-style: solid;
+    border-width: 2px;
+    font-family: 'DungGeunMo', sans-serif;
+    font-size: 12pt;
+    color: #fff;
+    width: 100%;
+    height: 100px;
+    background-color: #000084;
+    resize: none;
+    -webkit-box-sizing: border-box;
+    -moz-box-sizing: border-box;
+    box-sizing: border-box;
+}
+textarea#text-source {
+    height: calc(100% - 48px);
+}
+textarea#text-result {
+    height: calc(100% - 32px);
+}
+
+.button {
+    color: #000;
+    background-color: #aaa;
+    border:none;
+    padding: 8px 32px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    font-family: 'DungGeunMo', sans-serif;
+    font-size: 12pt;
+    box-shadow: 8px 8px #000;
+}
+.button:hover {
+    background-color: #bbb;
+}
+.button:active {
+    background-color: #bbb;
+    box-shadow: 0 0;
+    transform: translate(4px, 4px);
+}
+
+
+.menu-item {
+    color: #000084;
+    background-color: #bbb;
+}
+.menu-item:hover {
+    background-color: #ccc;
+}
+.menu-item:active {
+    background-color: #aaa;
+}
+
+#menu > span {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    padding: 0px 16px;
+}
+
+input[type="checkbox"]:before {
+    content: "[ ]";
+}

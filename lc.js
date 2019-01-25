@@ -1,4 +1,4 @@
-/* lc.js - 20190125 */
+/* lc.js - 20190126 */
 
 let lc = function() {
   let lc = {};
@@ -693,10 +693,11 @@ let lc = function() {
     let body = 'return (' + compileToken(tk) + ');';
     return pre + body;
   };
-  
-  let evaluate = (_0, val) => {
+
+  let evaluate = (_0, val, finishTime) => {
     let st = _0.stack;
     while(true) {
+      if(Date.now() >= finishTime) return "Timeout";
       while(val.constructor === LazyBox) {
         val = val.value(_0);
       }
@@ -709,21 +710,28 @@ let lc = function() {
   let new_0 = () => {
     return {
       LazyBox: LazyBox,
-      evaluate: evaluate,
       out: "",
       stack: []
     };
   };
 
   /* --- Runner --- */
-  let run = (name, src, predefined) => {
+  let run = (name, src, opt) => {
+    var predef = {};
+    if(opt.predefined) {
+      if(opt.predefined === true) predef = stdPredefined;
+      else predef = opt.predefined;
+    }
+    var timeLimit = opt.timeLimit || 600;
+    var finishTime = Date.now() + (timeLimit * 1000);
+    //
     var _0 = new_0();
     try {
-      let tk = parse(name, src, predefined);
+      let tk = parse(name, src, predef);
       namecheck(tk);
       let res = compile(tk);
       let fn = Function('_0', res)(_0);
-      let ret = evaluate(_0, fn);
+      let ret = evaluate(_0, fn, finishTime);
       _0.out += "=> " + ret;
     } catch(e) {
       if(e.constructor == CompileError) {

@@ -1,4 +1,5 @@
-/* lc.js */
+/* lc.js - 20190125 */
+
 let lc = function() {
   let lc = {};
   /* --- Source --- */
@@ -597,13 +598,13 @@ let lc = function() {
 
   let compile = (tk) => {
     let pre = `
-      function _qcont(v, p) {
-        p.box._ = v(p.val, p);
-        return p.box._;
+      function _qcont(v) {
+        this.box._ = v(this.val, this);
+        return this.box._;
       }
-      function _qcontr(v, p) {
-        p.box._ = p.val(v, p);
-        return p.box._;
+      function _qcontr(v) {
+        this.box._ = this.val(v, this);
+        return this.box._;
       }
       function _qapp(a, f) {
         _0.stack.push({box: _0, val: a, cont: _qcont});
@@ -693,17 +694,14 @@ let lc = function() {
     return pre + body;
   };
   
-  let lazy_cnt = 0;
-
   let evaluate = (_0, val) => {
+    let st = _0.stack;
     while(true) {
       while(val.constructor === LazyBox) {
         val = val.value(_0);
-        lazy_cnt++;
       }
-      if(_0.stack.length <= 0) break;
-      let p = _0.stack.pop();
-      val = p.cont(val, p);
+      if(st.length <= 0) break;
+      val = st.pop().cont(val);
     }
     return val;
   };
@@ -721,14 +719,12 @@ let lc = function() {
   let run = (name, src, predefined) => {
     var _0 = new_0();
     try {
-      lazy_cnt = 0;
       let tk = parse(name, src, predefined);
       namecheck(tk);
       let res = compile(tk);
       let fn = Function('_0', res)(_0);
       let ret = evaluate(_0, fn);
       _0.out += "=> " + ret;
-      console.log("lazy_cnt: " + lazy_cnt);
     } catch(e) {
       if(e.constructor == CompileError) {
         _0.out += "Compile Error\n";
@@ -744,6 +740,7 @@ let lc = function() {
   let stdPredefined = [
     {name: '(=:)', body: '\\f.\\x.f x'},
     {name: '(|>)', body: '\\f.\\x.f x'},
+    {name: '(<|)', body: '\\x.\\f.f x'},
     {name: '($)', body: '\\x.\\f.f x'},
     {name: '(+)', body: '@addr'},
     {name: '(-)', body: '@subr'},

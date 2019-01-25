@@ -7,8 +7,11 @@
     <script lang="javascript">
       function buttonClicked() {
         var src = document.getElementById("text-source").value;
+        var n = Date.now();
         var output = lc.run("<TEXT>", src, lc.stdPredefined);
         document.getElementById("text-result").value = output;
+        var t = Date.now();
+        document.getElementById("text-time").textContent = "[" + (t - n) / 1000 + "s]";
       }
     </script>
     <style>
@@ -24,7 +27,7 @@
     </div>
     <button id="button-run" onclick="buttonClicked();">Run</button>
     <div>
-      Result:<br>
+      Result: <span id="text-time"></span><br>
       <textarea rows="6" cols="80" class="fixed" id="text-result"></textarea>
     </div>
   </body>

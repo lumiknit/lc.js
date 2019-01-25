@@ -459,29 +459,17 @@ let lc = function() {
   /* --- Name Checker --- */
   let getDefaultNames = () => { return {
     '@print': 1,
-    '@add': 2,
-    '@sub': 2,
-    '@mul': 2,
-    '@div': 2,
-    '@mod': 2,
-    '@length': 1,
     '@true': 0,
     '@false': 0,
-    '@if': 3,
-    '@not': 1,
-    '@and': 2,
-    '@or': 2,
-    '@eq': 2,
-    '@lt': 2,
-    '@le': 2,
-    '@pair': 2,
-    '@first': 1,
-    '@second': 1,
-    '@nil': 0,
-    '@append': 2,
-    '@head': 1,
-    '@tail': 1,
-    '@isEmpty': 1
+    '@addr': 2,
+    '@subr': 2,
+    '@mulr': 2,
+    '@divr': 2,
+    '@modr': 2,
+    '@length': 1,
+    '@eqr': 2,
+    '@ltr': 2,
+    '@ler': 2
   }; };
 
   let findName = (names, name) => names[name] > 0;
@@ -522,10 +510,6 @@ let lc = function() {
 
   let namecheck = (tk) => {
     let x = namecheckOne(getDefaultNames(), tk);
-    if(x > 0) {
-      throw new CompileError(tk.src, tk.p,
-                              "wrong number of arguments for builtin");
-    }
     return true;
   };
   lc.namecheck = namecheck;
@@ -571,103 +555,180 @@ let lc = function() {
 
   let compileToken = (tk) => {
     switch(tk.type) {
-    case 'num': return 'new _qLB(() => Number(' + String(tk.data) + '))';
-    case 'str': return 'new _qLB(() => \'' + escape(tk.data) + '\')';
+    case 'num': return 'Number(' + String(tk.data) + ')';
+    case 'str': return '\'' + escape(tk.data) + '\'';
     case 'id':
     case 'op':
       return encodeNameForJS(tk.data);
-    case 'builtin':
-      switch(tk.data) {
-      default: return '_Q' + tk.data;
-      }
-      break;
+    case 'builtin': return '_Q' + tk.data;
     case 'lam':
-      return "new _qLB(() => ((" + compileToken(tk.data[0]) + ")=>(" +
-        compileToken(tk.data[1]) + ")))";
+      return "((" + compileToken(tk.data[0]) + ")=>(" +
+        compileToken(tk.data[1]) + "))";
     case 'app':
-      return "new _qLB(() => (" + compileToken(tk.data[0]) +
-        ").call(" + compileToken(tk.data[1]) + "))";
+      return "new _qLB(() => _qapp(" + compileToken(tk.data[1]) + ", " + compileToken(tk.data[0]) + "))";
     }
+  };
+
+  let LazyBox = function(f) {
+    this._ = undefined;
+    this.f = f;
+  };
+  LazyBox.prototype.value = function(_0) {
+    if(this._ == undefined) {
+      let x = _0.stack.length;
+      let temp = this.f();
+      if(_0.stack.length > x) {
+        _0.stack[x].box = this;
+      }
+      return temp;
+    } else {
+      this.value = this.constructor.prototype.retValue;
+      return this._;
+    }
+  };
+  LazyBox.prototype.retValue = function() {
+    return this._;
+  };
+  LazyBox.prototype.toString = function() {
+    if(this._ === undefined) {
+      return "<<" + String(this.f) + ">>";
+    } else return String(this._);
   };
 
   let compile = (tk) => {
     let pre = `
-      function _qLB(f) {
-        this._ = undefined;
-        this.f = f;
+      function _qcont(v, p) {
+        p.box._ = v(p.val, p);
+        return p.box._;
+      }
+      function _qcontr(v, p) {
+        p.box._ = p.val(v, p);
+        return p.box._;
+      }
+      function _qapp(a, f) {
+        _0.stack.push({box: _0, val: a, cont: _qcont});
+        return f;
+      }
+      let _qLB = _0.LazyBox;
+      let _Qprint = x => {
+        _0.stack.push({box: _0, val: x => { _0.out += x + "\\n"; return x; }, cont: _qcontr});
+        return x;
       };
-      _qLB.prototype.value = function() {
-        if(this._ == undefined) {
-          this._ = this.f();
-          if(this._.constructor === _qLB) this._ = this._.value();
-        }
-        return this._;
+      let _Qtrue = x => y => x;
+      let _Qfalse = x => y => y;
+      let _Qaddr = (x, p) => {
+        _0.stack.push({box: p.box, cont: _qcontr,
+          val: x => (y, p) => {
+            _0.stack.push({box: p.box, cont: _qcontr,
+              val: y => y + x});
+            return y;
+          }});
+        return x;
       };
-      _qLB.prototype.call = function(x) {
-        if(this._ == undefined) {
-          this._ = this.f();
-          if(this._.constructor === _qLB) this._ = this._.value();
-        }
-        return this._(x);
+      let _Qsubr = (x, p) => {
+        _0.stack.push({box: p.box, cont: _qcontr,
+          val: x => (y, p) => {
+            _0.stack.push({box: p.box, cont: _qcontr,
+              val: y => y - x});
+            return y;
+          }});
+        return x;
       };
-
-      let _Qprint = new _qLB(() => x => {
-        _0.out += x.value() + "\\n";
-        return new _qLB(() => String(x.value()));
-      });
-      let _Qadd = new _qLB(() => x =>
-        new _qLB(() => y => new _qLB(() => x.value() + y.value())));
-      let _Qsub = new _qLB(() => x =>
-        new _qLB(() => y => new _qLB(() => x.value() - y.value())));
-      let _Qmul = new _qLB(() => x =>
-        new _qLB(() => y => new _qLB(() => x.value() * y.value())));
-      let _Qdiv = new _qLB(() => x =>
-        new _qLB(() => y => new _qLB(() => Math.floor(x.value() / y.value()))));
-      let _Qmod = new _qLB(() => x =>
-        new _qLB(() => y => new _qLB(() => x.value() % y.value())));
-      let _Qlength = new _qLB(() => x => new _qLB(() => Number(x.value().length)));
-      let _Qtrue = new _qLB(() => x => new _qLB(() => y => x));
-      let _Qfalse = new _qLB(() => x => new _qLB(() => y => y));
-      let _Qnot = new _qLB(() => x => x.call(_Qfalse).call(_Qtrue));
-      let _Qif = new _qLB(() => f =>
-        new _qLB(() => x => new _qLB(() => y => f.call(x).call(y))));
-      let _Qeq = new _qLB(() => x =>
-        new _qLB(() => y => new _qLB(() =>
-        x.value() === y.value() ? _Qtrue : _Qfalse)));
-      let _Qlt = new _qLB(() => x =>
-        new _qLB(() => y => new _qLB(() =>
-        x.value() < y.value() ? _Qtrue : _Qfalse)));
-      let _Qle = new _qLB(() => x =>
-        new _qLB(() => y => new _qLB(() =>
-        x.value() <= y.value() ? _Qtrue : _Qfalse)));
-      let _Qpair = new _qLB(() => x =>
-        new _qLB(() => y => new _qLB(() => f =>
-        f.call(x).call(y))));
-      let _Qfirst = new _qLB(() => p => p.call(_Qtrue));
-      let _Qsecond = new _qLB(() => p => p.call(_Qfalse));
-      let _Qnil = _Qfalse;
-      let _Qappend = new _qLB(() => a => new _qLB(() => l =>
-        new _qLB(() => f => new _qLB(() => x => f.call(a).call(l.call(f).call(x))))));
-      let _Qhead = new _qLB(() => l => l.call(_Qtrue).call(_Qfalse));
-      let _Qtail = new _qLB(() => l =>
-        _Qfirst.call(l.call(new _qLB(() => a => new _qLB(() => b =>
-          _Qpair.call(_Qsecond.call(b)).call(_Qappend.call(a).call(_Qsecond.call(b)))))).call(_Qpair.call(_Qnil).call(_Qnil))));
-      let _QisEmpty = new _qLB(() => l => l.call(new _qLB(() => a => new _qLB(() => b => _Qfalse))).call(_Qtrue));
+      let _Qmulr = (x, p) => {
+        _0.stack.push({box: p.box, cont: _qcontr,
+          val: x => (y, p) => {
+            _0.stack.push({box: p.box, cont: _qcontr,
+              val: y => y * x});
+            return y;
+          }});
+        return x;
+      };
+      let _Qdivr = (x, p) => {
+        _0.stack.push({box: p.box, cont: _qcontr,
+          val: x => (y, p) => {
+            _0.stack.push({box: p.box, cont: _qcontr,
+              val: y => Math.floor(y / x)});
+            return y;
+          }});
+        return x;
+      };
+      let _Qmodr = (x, p) => {
+        _0.stack.push({box: p.box, cont: _qcontr,
+          val: x => (y, p) => {
+            _0.stack.push({box: p.box, cont: _qcontr,
+              val: y => y % x});
+            return y;
+          }});
+        return x;
+      };
+      let _Qeqr = (x, p) => {
+        _0.stack.push({box: p.box, cont: _qcontr,
+          val: x => (y, p) => {
+            _0.stack.push({box: p.box, cont: _qcontr,
+              val: y => y === x ? _Qtrue : _Qfalse});
+            return y;
+          }});
+        return x;
+      };
+      let _Qltr = (x, p) => {
+        _0.stack.push({box: p.box, cont: _qcontr,
+          val: x => (y, p) => {
+            _0.stack.push({box: p.box, cont: _qcontr,
+              val: y => y < x ? _Qtrue : _Qfalse});
+            return y;
+          }});
+        return x;
+      };
+      let _Qler = (x, p) => {
+        _0.stack.push({box: p.box, cont: _qcontr,
+          val: x => (y, p) => {
+            _0.stack.push({box: p.box, cont: _qcontr,
+              val: y => y <= x ? _Qtrue : _Qfalse});
+            return y;
+          }});
+        return x;
+      };
     `;
-    let body = 'return (' + compileToken(tk) + ').value();';
+    let body = 'return (' + compileToken(tk) + ');';
     return pre + body;
+  };
+  
+  let lazy_cnt = 0;
+
+  let evaluate = (_0, val) => {
+    while(true) {
+      while(val.constructor === LazyBox) {
+        val = val.value(_0);
+        lazy_cnt++;
+      }
+      if(_0.stack.length <= 0) break;
+      let p = _0.stack.pop();
+      val = p.cont(val, p);
+    }
+    return val;
+  };
+
+  let new_0 = () => {
+    return {
+      LazyBox: LazyBox,
+      evaluate: evaluate,
+      out: "",
+      stack: []
+    };
   };
 
   /* --- Runner --- */
   let run = (name, src, predefined) => {
-    var _0 = {out: ""};
+    var _0 = new_0();
     try {
+      lazy_cnt = 0;
       let tk = parse(name, src, predefined);
       namecheck(tk);
       let res = compile(tk);
-      console.log(res);
-      let ret = Function('_0', res)(_0);
+      let fn = Function('_0', res)(_0);
+      let ret = evaluate(_0, fn);
       _0.out += "=> " + ret;
+      console.log("lazy_cnt: " + lazy_cnt);
     } catch(e) {
       if(e.constructor == CompileError) {
         _0.out += "Compile Error\n";
@@ -684,33 +745,33 @@ let lc = function() {
     {name: '(=:)', body: '\\f.\\x.f x'},
     {name: '(|>)', body: '\\f.\\x.f x'},
     {name: '($)', body: '\\x.\\f.f x'},
-    {name: '(+)', body: '\\r.\\l. @add l r'},
-    {name: '(-)', body: '\\r.\\l. @sub l r'},
-    {name: '(*)', body: '\\r.\\l. @mul l r'},
-    {name: '(/)', body: '\\r.\\l. @div l r'},
-    {name: '(%)', body: '\\r.\\l. @mod l r'},
+    {name: '(+)', body: '@addr'},
+    {name: '(-)', body: '@subr'},
+    {name: '(*)', body: '@mulr'},
+    {name: '(/)', body: '@divr'},
+    {name: '(%)', body: '@modr'},
     {name: '(**)', body: '\\g.\\f.\\x.f (g x)'},
-    {name: '(!)', body: '@not'},
-    {name: '(&)', body: '\\r.\\l. @and l r'},
-    {name: '(|)', body: '\\r.\\l. @or l r'},
-    {name: 'if', body: '@if'},
     {name: 'true', body: '@true'},
     {name: 'false', body: '@false'},
-    {name: '(==)', body: '@eq'},
-    {name: '(!=)', body: '\\y.\\x.@not(@eq x y)'},
-    {name: '(<=)', body: '\\r.\\l. @le l r'},
-    {name: '(<)', body: '\\r.\\l. @lt l r'},
-    {name: '(>=)', body: '@le'},
-    {name: '(>)', body: '@lt'},
+    {name: 'if', body: '\\b.\\t.\\f.b t f'},
+    {name: '(!)', body: '\\f.f true false'},
+    {name: '(&)', body: '\\r.\\l. l r false'},
+    {name: '(|)', body: '\\r.\\l. l true r'},
+    {name: '(==)', body: '@eqr'},
+    {name: '(!=)', body: '\\y.\\x.!(@eqr x y)'},
+    {name: '(<=)', body: '@ler'},
+    {name: '(<)', body: '@ltr'},
+    {name: '(>=)', body: '\\r.\\l. @ler l r'},
+    {name: '(>)', body: '\\r.\\l. @ltr l r'},
     {name: 'print', body: '@print'},
-    {name: '(,)', body: '\\r.\\l. @pair l r'},
-    {name: 'first', body: '@first'},
-    {name: 'second', body: '@second'},
-    {name: 'nil', body: '@nil'},
-    {name: '(:)', body: '\\r.\\l. @append l r'},
-    {name: 'head', body: '@head'},
-    {name: 'tail', body: '@tail'},
-    {name: 'isEmpty', body: '@isEmpty'},
+    {name: '(,)', body: '\\r.\\l. \\f. f l r'},
+    {name: 'first', body: '\\p.p true'},
+    {name: 'second', body: '\\p.p false'},
+    {name: 'nil', body: 'false'},
+    {name: '(:)', body: '\\r.\\l. \\f.\\x.f l (r f x)'},
+    {name: 'head', body: '\\l.l true false'},
+    {name: 'tail', body: '\\l.first (l (\\a.\\b.(second b, a : second b)) (nil, nil))'},
+    {name: 'isEmpty', body: '\\l.l (\\a.\\b.false) true'},
     {name: 'I', body: '\\x.x'},
     {name: 'K', body: '\\x.\\y.x'},
     {name: 'S', body: '\\x.\\y.\\z.x z (y z)'},

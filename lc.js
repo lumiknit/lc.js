@@ -264,7 +264,7 @@ let lc = function() {
     }
     let e = S.p;
     if(!S.is('"')) {
-      throw new CompileError(src, S.p - S.predefOff,
+      throw new CompileError(S.src, S.p - S.predefOff,
         "wrong string format");
     } else S.pass();
     S.pop();

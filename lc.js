@@ -144,7 +144,7 @@ let lc = function() {
 
   /* --- Parser --- */
   /* Token
-    :NUM, :STR, :ID, :BUILTIN, :OP, :LAM, :APP */
+    :NUM, :STR, :ID, :BUILTIN, :LAM, :APP */
   function Token(src, p, type, data) {
     this.src = src;
     this.p = p;
@@ -159,7 +159,6 @@ let lc = function() {
     case 'str': return '"' + escape(this.data) + '"';
     case 'id': return this.data;
     case 'builtin': return '@' + this.data;
-    case 'op': return this.data;
     case 'lam':
       return '\\' + this.data[0] + ".(" + this.data[1].toString() + ")";
     case 'app':
@@ -319,7 +318,7 @@ let lc = function() {
     }
     if(S.p - b <= 0) return S.restore();
     S.pop();
-    return new Token(S.src, b - S.predefOff, 'op', S.sub(b, S.p - b));
+    return new Token(S.src, b - S.predefOff, 'id', S.sub(b, S.p - b));
   };
 
   let tryParseParen = (S) => {
@@ -430,7 +429,7 @@ let lc = function() {
                                 S.unexpectedMsg(S.p) +
                                 ", expect RHS of operator");
         } else break;
-      } else if(o == null) o = new Token(S.src, z.p, 'op', '');
+      } else if(o == null) o = new Token(S.src, z.p, 'id', '');
       while(stack.length > 1) {
         let p = stack[stack.length - 2];
         let p_o = opPriority(o.data);
@@ -457,6 +456,41 @@ let lc = function() {
   };
   lc.parse = parse;
 
+  /* --- Injector --- */
+  let getDefinitionCont = (tk) => {
+    if(tk.type === 'app') {
+      if(tk.data[0].type === 'lam') {
+        return tk.data[0].data;
+      } else if(tk.data[0].type == 'app') {
+        let op = tk.data[0].data[0];
+        let l = tk.data[0].data[1];
+        if(op.type === 'id' && op.data === '=:' &&
+          l.type === 'lam') {
+          return l.data;
+        }
+      }
+    }
+    return null;
+  }
+
+  let injectIntoBody = (dst, src) => {
+    let tk = dst;
+    if(tk.type !== 'app') {
+      return src;
+    } else {
+      let t = [null, tk];
+      let a = t;
+      let last;
+      do {
+        last = a;
+        a = getDefinitionCont(a[1]);
+      } while(a !== null);
+      last[1] = src;
+      return t[1];
+    }
+  };
+  lc.injectIntoBody =injectIntoBody;
+
   /* --- Name Checker --- */
   let getDefaultNames = () => { return {
     '@print': 1,
@@ -481,7 +515,6 @@ let lc = function() {
     var j;
     switch(tk.type) {
     case 'id':
-    case 'op':
       if(!findName(names, tk.data)) {
         throw new CompileError(tk.src, tk.p,
                               "name " + tk.data + " is not bound");
@@ -559,7 +592,6 @@ let lc = function() {
     case 'num': return 'Number(' + String(tk.data) + ')';
     case 'str': return '\'' + escape(tk.data) + '\'';
     case 'id':
-    case 'op':
       return encodeNameForJS(tk.data);
     case 'builtin': return '_Q' + tk.data;
     case 'lam':
@@ -728,6 +760,10 @@ let lc = function() {
     var _0 = new_0();
     try {
       let tk = parse(name, src, predef);
+      if(typeof opt.injectBody === 'string') {
+        let b = parse('<INJECT>', opt.injectBody);
+        tk = injectIntoBody(tk, b);
+      }
       namecheck(tk);
       let res = compile(tk);
       let fn = Function('_0', res)(_0);
@@ -788,3 +824,5 @@ let lc = function() {
 
   return lc;
 }();
+
+export default lc;

@@ -13,8 +13,14 @@ let lcutil = function() {
       injectBody: injectBody
     });
     let dt = Date.now() - startTime;
+    let gradeResult = false;
+    if(output.constructor === RegExp) {
+      gradeResult = output.test(out);
+    } else {
+      gradeResult = out === output;
+    }
     return {
-      result: out === output,
+      result: gradeResult,
       injected: injectBody,
       expected: output,
       out: out,
@@ -23,21 +29,44 @@ let lcutil = function() {
   };
   lcutil.grade = grade;
 
+  let reportToString = function() {
+    let o = "";
+    for(var i = 0; i < this.result.length; i++) {
+      o += (i + 1) + ". ";
+      if(this.result[i].result) o += 'Correct\n';
+      else o += 'Wrong\n';
+      o += ' - Input: ' + this.result[i].injected + '\n';
+      o += ' - Your: ' + this.result[i].out + '\n\n';
+    }
+    return o;
+  }
+
   let gradeAll = (src, problemSet) => {
+    let report = {};
     let result = [];
+    let time = Date.now();
+    let score = 0;
+    let n = 0;
     if(problemSet.problems) {
       let p = problemSet.problems;
-      for(var i = 0; i < p.length; i++) {
-        result.push(grade(src, p.injectBody, p.output, p.timeLimit));
+      n = p.length;
+      for(var i = 0; i < n; i++) {
+        result.push(grade(src, p[i].injectBody, p[i].output, p[i].timeLimit));
+        if(result[i].result) score++;
       }
+      
     } else if(problemSet.n > 0) {
-      let n = problemSet.n;
+      n = problemSet.n;
       for(var i = 0; i < n; i++) {
         let p = problemSet.generate(i, n);
         result.push(grade(src, p.injectBody, p.output, p.timeLimit));
+        if(result[i].result) score++;
       }
     }
-    return result;
+    report.time = Date.now() - time;
+    report.result = result;
+    report.toString = reportToString;
+    return report;
   }
   lcutil.gradeAll = gradeAll;
 
@@ -54,7 +83,7 @@ let lcutil = function() {
         p.timeLimit = 1;
         return p;
       }
-    },
+    }
   };
 
   return lcutil;

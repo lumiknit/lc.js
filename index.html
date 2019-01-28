@@ -10,6 +10,8 @@
       import lc from "./lc.js";
       import lcutil from "./lcutil.js";
 
+      let problem = lcutil.problems.sum;
+
       window.lc = lc;
       window.lcutil = lcutil;
 
@@ -26,18 +28,9 @@
       window.onSubmitButtonClicked = function() {
         var src = document.getElementById("text-source").value;
         var n = Date.now();
-        let results = lcutil.gradeAll(src, lcutil.problems.sum);
+        let report = lcutil.gradeAll(src, problem);
         var t = Date.now();
-        let o = '';
-        for(var i = 0; i < results.length; i++){
-          o += (i + 1) + ". ";
-          if(results[i].result) o += 'Correct\n';
-          else o += 'Wrong\n';
-          o += ' - Input: ' + results[i].injected + '\n';
-          o += ' - Answer: ' + results[i].expected + '\n';
-          o += ' - Your: ' + results[i].out + '\n';
-        }
-        document.getElementById("text-result").value = o;
+        document.getElementById("text-result").value = report.toString();
         
         document.getElementById("text-time").textContent = "[" + (t - n) / 1000 + "s]";
       }
@@ -69,8 +62,8 @@
               }
             }
           }, false);
-          document.getElementById('side-title').textContent = '# ' + lcutil.problems.sum.title;
-          document.getElementById('side-content').textContent = lcutil.problems.sum.description;
+          document.getElementById('side-title').textContent = '# ' + problem.title;
+          document.getElementById('side-content').textContent = problem.description;
       };
     </script>
   </head>

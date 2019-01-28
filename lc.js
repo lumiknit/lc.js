@@ -64,7 +64,7 @@ let lc = function() {
   let unescape = (s) => {
     let res = "";
     for(let i = 0; i < s.length; i++) {
-      if(s[i] == '\\') {
+      if(s[i] == '\\' || s[i] == 'λ') {
         i++;
         switch(s[i]) {
         case '0': res += "\0"; break;
@@ -598,7 +598,7 @@ let lc = function() {
       return "((" + compileToken(tk.data[0]) + ")=>(" +
         compileToken(tk.data[1]) + "))";
     case 'app':
-      return "new _qLB(() => _qapp(" + compileToken(tk.data[1]) + ", " + compileToken(tk.data[0]) + "))";
+      return "new _qLB(() => _qapp(" + compileToken(tk.data[0]) + ", " + compileToken(tk.data[1]) + "))";
     }
   };
 
@@ -638,7 +638,7 @@ let lc = function() {
         this.box._ = this.val(v, this);
         return this.box._;
       }
-      function _qapp(a, f) {
+      function _qapp(f, a) {
         _0.stack.push({box: _0, val: a, cont: _qcont});
         return f;
       }
@@ -768,13 +768,14 @@ let lc = function() {
       let res = compile(tk);
       let fn = Function('_0', res)(_0);
       let ret = evaluate(_0, fn, finishTime);
-      _0.out += "=> " + ret;
+      _0.out += "=> " + lc.valueToString(ret);
     } catch(e) {
       if(e.constructor == CompileError) {
         _0.out += "Compile Error\n";
         _0.out += e.toString();
       } else {
-        _0.out += e;
+        _0.out += "JS Error(" + e + ')\n';
+        _0.out += "It may be caused by trying to call number or string.";
       }
     }
     return _0.out;
@@ -821,6 +822,48 @@ let lc = function() {
     {name: 'Z', body: '\\f.U \\z.f \\v.z z v'},
   ];
   lc.stdPredefined = stdPredefined;
+  
+
+  lc.reduceParen = (s) => {
+    let stack = [{s: 0, e: 0, x: ''}];
+    for(var i = 0; i < s.length; i++) {
+      if(s[i] === '(') {
+        stack.push({s: i + 1, e: i + 1, x: ''});
+      } else if(s[i] === ')') {
+        let t = stack.pop();
+        let x = t.x;
+        if(s[i + 1] !== ')' && s[i + 1] !== undefined || t.s - 1 !== stack[stack.length - 1].s) {
+          x = '(' + x + ')';
+        }
+        stack[stack.length - 1].x += x;
+        stack[stack.length - 1].e = i;
+      } else {
+        stack[stack.length - 1].e++;
+        stack[stack.length - 1].x += s[i];
+      }
+    }
+    while(stack.length > 1) {
+      let t = stack.pop();
+      stack[stack.length - 1].x += '(' + t.x;
+    }
+    return stack[0].x;
+  }
+
+  lc.valueToString = (val) => {
+    if(val.constructor === Number) {
+      return val.toString();
+    } else if(val.constructor === String) {
+      return '"' + escape(val) + '"';
+    } else {
+      let x = val.toString();
+      let arrow = /\(([^()]+)\)=>/g;
+      x = x.replace(arrow, "λ$1.");
+      let qapp = /new _qLB\(\(\) => _qapp\(/g;
+      x = x.replace(qapp, "((");
+      x = x.replace(/,/g, '');
+      return lc.reduceParen(x);
+    }
+  }
 
   return lc;
 }();
